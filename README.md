@@ -1,6 +1,6 @@
 # FYP-2025-26 ML Cryoprotectant
 
-## Machine Learning Workflow for Cryopreservation Optimization: A Step-by-Step Guide for Biology Undergraduate Students
+## Guide of Machine Learning Workflow for Cryopreservation Optimization
 
 ### **1. Introduction and Overview**
 
