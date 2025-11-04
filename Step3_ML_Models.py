@@ -8,16 +8,17 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.impute import SimpleImputer
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 
 # Load cleaned data
-df = pd.read_csv('Cleaned_Cryopreservation_Data.csv')
+df = pd.read_csv('MSC_Cleaned_Data.csv')
 
 # Prepare features and target
 X = df[['DMSO_Numeric', 'Cooling_Rate_Numeric']].values
@@ -34,11 +35,16 @@ print(f"Testing: {X_test.shape}")
 print()
 
 # ============================================================
-# MODEL 1: RANDOM FOREST
+# MODEL 1: RANDOM FOREST (with imputation for NaN handling)
 # ============================================================
 print("="*60)
 print("RANDOM FOREST REGRESSOR")
 print("="*60)
+
+# Impute NaN values before training
+imputer_rf = SimpleImputer(strategy='mean')
+X_train_rf = imputer_rf.fit_transform(X_train)
+X_test_rf = imputer_rf.transform(X_test)
 
 # Create and train Random Forest
 rf_model = RandomForestRegressor(
@@ -48,10 +54,10 @@ rf_model = RandomForestRegressor(
     random_state=42
 )
 
-rf_model.fit(X_train, y_train)
+rf_model.fit(X_train_rf, y_train)
 
 # Make predictions
-rf_pred = rf_model.predict(X_test)
+rf_pred = rf_model.predict(X_test_rf)
 
 # Evaluate
 rf_r2 = r2_score(y_test, rf_pred)
@@ -75,7 +81,8 @@ best_viability_rf = 0
 
 for dmso in np.linspace(0, 0.15, 30):
     for cooling in np.linspace(0.5, 10, 30):
-        pred_viability = rf_model.predict([[dmso, cooling]])[0]
+        X_pred = imputer_rf.transform([[dmso, cooling]])
+        pred_viability = rf_model.predict(X_pred)[0]
         if pred_viability > best_viability_rf:
             best_viability_rf = pred_viability
             optimal_params_rf = [dmso, cooling]
@@ -87,49 +94,49 @@ print(f"  Predicted Viability: {best_viability_rf*100:.2f}%")
 
 
 # ============================================================
-# MODEL 2: GRADIENT BOOSTING
+# MODEL 2: HISTOGRAM-BASED GRADIENT BOOSTING
 # ============================================================
 print("\n" + "="*60)
-print("GRADIENT BOOSTING REGRESSOR")
+print("HISTOGRAM-BASED GRADIENT BOOSTING REGRESSOR")
 print("="*60)
 
-# Create and train Gradient Boosting
-gb_model = GradientBoostingRegressor(
-    n_estimators=100,      # Number of boosting stages
+# HistGradientBoostingRegressor handles NaN natively (no imputation needed)
+hgb_model = HistGradientBoostingRegressor(
+    max_iter=100,          # Number of boosting iterations
     learning_rate=0.1,     # Shrinks contribution of each tree
     max_depth=5,           # Maximum depth of trees
     random_state=42
 )
 
-gb_model.fit(X_train, y_train)
+hgb_model.fit(X_train, y_train)
 
 # Make predictions
-gb_pred = gb_model.predict(X_test)
+hgb_pred = hgb_model.predict(X_test)
 
 # Evaluate
-gb_r2 = r2_score(y_test, gb_pred)
-gb_mae = mean_absolute_error(y_test, gb_pred)
-gb_rmse = np.sqrt(mean_squared_error(y_test, gb_pred))
+hgb_r2 = r2_score(y_test, hgb_pred)
+hgb_mae = mean_absolute_error(y_test, hgb_pred)
+hgb_rmse = np.sqrt(mean_squared_error(y_test, hgb_pred))
 
-print(f"R² Score: {gb_r2:.4f}")
-print(f"Mean Absolute Error: {gb_mae:.4f}")
-print(f"Root Mean Squared Error: {gb_rmse:.4f}")
+print(f"R² Score: {hgb_r2:.4f}")
+print(f"Mean Absolute Error: {hgb_mae:.4f}")
+print(f"Root Mean Squared Error: {hgb_rmse:.4f}")
 
-# Find optimal formulation using Gradient Boosting
-optimal_params_gb = []
-best_viability_gb = 0
+# Find optimal formulation using Histogram-based Gradient Boosting
+optimal_params_hgb = []
+best_viability_hgb = 0
 
 for dmso in np.linspace(0, 0.15, 30):
     for cooling in np.linspace(0.5, 10, 30):
-        pred_viability = gb_model.predict([[dmso, cooling]])[0]
-        if pred_viability > best_viability_gb:
-            best_viability_gb = pred_viability
-            optimal_params_gb = [dmso, cooling]
+        pred_viability = hgb_model.predict([[dmso, cooling]])[0]
+        if pred_viability > best_viability_hgb:
+            best_viability_hgb = pred_viability
+            optimal_params_hgb = [dmso, cooling]
 
-print(f"\nOptimal formulation (Gradient Boosting):")
-print(f"  DMSO: {optimal_params_gb[0]*100:.2f}%")
-print(f"  Cooling Rate: {optimal_params_gb[1]:.2f} °C/min")
-print(f"  Predicted Viability: {best_viability_gb*100:.2f}%")
+print(f"\nOptimal formulation (Histogram-based Gradient Boosting):")
+print(f"  DMSO: {optimal_params_hgb[0]*100:.2f}%")
+print(f"  Cooling Rate: {optimal_params_hgb[1]:.2f} °C/min")
+print(f"  Predicted Viability: {best_viability_hgb*100:.2f}%")
 
 
 # ============================================================
@@ -139,10 +146,15 @@ print("\n" + "="*60)
 print("NEURAL NETWORK (TENSORFLOW/KERAS)")
 print("="*60)
 
+# Impute NaN values before scaling (NN cannot handle NaN)
+imputer_nn = SimpleImputer(strategy='mean')
+X_train_imputed = imputer_nn.fit_transform(X_train)
+X_test_imputed = imputer_nn.transform(X_test)
+
 # Scale features for neural network (important!)
 scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+X_train_scaled = scaler.fit_transform(X_train_imputed)
+X_test_scaled = scaler.transform(X_test_imputed)
 
 # Build neural network
 nn_model = keras.Sequential([
@@ -188,8 +200,10 @@ best_viability_nn = 0
 
 for dmso in np.linspace(0, 0.15, 30):
     for cooling in np.linspace(0.5, 10, 30):
-        X_pred = scaler.transform([[dmso, cooling]])
-        pred_viability = nn_model.predict(X_pred, verbose=0)[0][0]
+        X_pred_raw = np.array([[dmso, cooling]])
+        X_pred_imputed = imputer_nn.transform(X_pred_raw)
+        X_pred_scaled = scaler.transform(X_pred_imputed)
+        pred_viability = nn_model.predict(X_pred_scaled, verbose=0)[0][0]
         if pred_viability > best_viability_nn:
             best_viability_nn = pred_viability
             optimal_params_nn = [dmso, cooling]
@@ -208,13 +222,13 @@ print("MODEL COMPARISON SUMMARY")
 print("="*60)
 
 summary_df = pd.DataFrame({
-    'Model': ['Random Forest', 'Gradient Boosting', 'Neural Network'],
-    'R² Score': [rf_r2, gb_r2, nn_r2],
-    'MAE': [rf_mae, gb_mae, nn_mae],
-    'RMSE': [rf_rmse, gb_rmse, nn_rmse],
-    'Optimal DMSO (%)': [optimal_params_rf[0]*100, optimal_params_gb[0]*100, optimal_params_nn[0]*100],
-    'Optimal Cooling (°C/min)': [optimal_params_rf[1], optimal_params_gb[1], optimal_params_nn[1]],
-    'Predicted Viability (%)': [best_viability_rf*100, best_viability_gb*100, best_viability_nn*100]
+    'Model': ['Random Forest', 'Hist Gradient Boosting', 'Neural Network'],
+    'R² Score': [rf_r2, hgb_r2, nn_r2],
+    'MAE': [rf_mae, hgb_mae, nn_mae],
+    'RMSE': [rf_rmse, hgb_rmse, nn_rmse],
+    'Optimal DMSO (%)': [optimal_params_rf[0]*100, optimal_params_hgb[0]*100, optimal_params_nn[0]*100],
+    'Optimal Cooling (°C/min)': [optimal_params_rf[1], optimal_params_hgb[1], optimal_params_nn[1]],
+    'Predicted Viability (%)': [best_viability_rf*100, best_viability_hgb*100, best_viability_nn*100]
 })
 
 print(summary_df.to_string(index=False))
