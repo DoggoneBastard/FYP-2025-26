@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.impute import SimpleImputer
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from tensorflow.keras import layers # type: ignore
 import matplotlib.pyplot as plt
 
 # Load cleaned data
